@@ -3,40 +3,39 @@ import pickle
 import numpy as np
 from flask import Flask, render_template, request, jsonify
 
-app = Flask(__name__)
+# Ensure Flask locates the template folder correctly relative to app.py
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+TEMPLATE_DIR = os.path.join(BASE_DIR, 'templates')
 
-MODEL_PATH = "ada_model.pkl"
+app = Flask(__name__, template_folder=TEMPLATE_DIR)
 
-# Load the trained AdaBoost model
+MODEL_PATH = os.path.join(BASE_DIR, "ada_model.pkl")
+
+# Load model safely
+model = None
 if os.path.exists(MODEL_PATH):
     with open(MODEL_PATH, "rb") as f:
         model = pickle.load(f)
-else:
-    raise FileNotFoundError(f"Model file '{MODEL_PATH}' not found in the root directory.")
-
-# Feature mapping for display names
-FEATURE_NAMES = [
-    "Age", "Gender", "Tenure", "Usage Frequency", 
-    "Support Calls", "Payment Delay", "Subscription Type", 
-    "Contract Length", "Total Spend", "Last Interaction"
-]
 
 
 @app.route("/", methods=["GET"])
 def index():
-    """Renders the HTML user interface."""
-    return render_template("index.html")
+    try:
+        return render_template("index.html")
+    except Exception as e:
+        return f"Template Error: {str(e)}", 500
 
 
 @app.route("/predict", methods=["POST"])
 def predict():
-    """Endpoint for predictions (handles both JSON and Form submissions)."""
+    if model is None:
+        return jsonify({"error": "Model pickle file not loaded properly."}), 500
+
     try:
         if request.is_json:
             data = request.get_json()
             features = data.get("features", [])
         else:
-            # Handle standard HTML form submission
             features = [
                 float(request.form.get("age", 0)),
                 float(request.form.get("gender", 0)),
@@ -50,15 +49,11 @@ def predict():
                 float(request.form.get("last_interaction", 0))
             ]
 
-        # Reshape input for single sample prediction
         input_array = np.array(features).reshape(1, -1)
-
-        # Predict
         prediction = int(model.predict(input_array)[0])
 
         response = {"prediction": prediction}
 
-        # Predict probabilities if available
         if hasattr(model, "predict_proba"):
             probabilities = model.predict_proba(input_array)[0].tolist()
             response["probabilities"] = probabilities
@@ -70,4 +65,4 @@ def predict():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=5000)
